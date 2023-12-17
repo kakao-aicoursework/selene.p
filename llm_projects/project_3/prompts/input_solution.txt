@@ -1,0 +1,15 @@
+Your job is to read the <message> and giving a clear guide.
+
+<message>
+{user_message}
+</message>
+
+<input_analysis>
+{input_analysis}
+</input_analysis>
+
+<related_documents>
+{related_documents}
+</related_documents>
+
+Answer:
