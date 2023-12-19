@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import os
 
 import chromadb
+import aiohttp
 
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts.chat import ChatPromptTemplate
@@ -117,7 +118,10 @@ def set_vector_db():
             documents.append(document)
 
         client = chromadb.PersistentClient()
-        client.delete_collection(name=collection_name)
+        try:
+            client.delete_collection(name=collection_name)
+        except ValueError:
+            pass
         collection = client.get_or_create_collection(
             name=collection_name,
             metadata={"hnsw:space": "cosine"}
@@ -150,14 +154,15 @@ def query_db(query: str, collection_name: str):
 
 def query_web_search(user_message: str) -> str:
     context = {"user_message": user_message}
-    context["related_web_search_results"] = SEARCH_TOOL.run(user_message)
+    # context["related_web_search_results"] = SEARCH_TOOL.run(user_message)
 
-    has_value = search_value_check_chain.run(context)
+    # has_value = search_value_check_chain.run(context)
 
-    if has_value == "Y":
-        return search_compression_chain.run(context)
-    else:
-        return ""
+    # if has_value == "Y":
+    #     return search_compression_chain.run(context)
+    # else:
+    #     return ""
+    return ""
 
 
 def load_conversation_history(conversation_id: str):
@@ -202,15 +207,36 @@ def generate_answer(user_message, conversation_id: str='fa1010') -> dict[str, st
             answer += context[step.output_key]
             answer += "\n\n"
     else:
+        context["related_documents"] = ""
         context["compressed_web_search_results"] = query_web_search(
             context["user_message"]
         )
         answer = default_chain.run(context)
-
     log_user_message(history_file, user_message)
     log_bot_message(history_file, answer)
     return {"answer": answer}
 
-def callback_handler(request: ChatbotRequest) -> dict:
+async def callback_handler(request: ChatbotRequest) -> dict:
     set_vector_db()
-    return generate_answer(request.userRequest.utterance)
+
+    payload = {
+        "version": "2.0",
+        "template": {
+            "outputs": [
+                {
+                    "simpleText": {
+                        "text": generate_answer(request.userRequest.utterance)
+                    }
+                }
+            ]
+        }
+    }
+    # ===================== end =================================
+    # 참고링크1 : https://kakaobusiness.gitbook.io/main/tool/chatbot/skill_guide/ai_chatbot_callback_guide
+    # 참고링크1 : https://kakaobusiness.gitbook.io/main/tool/chatbot/skill_guide/answer_json_format
+
+    url = request.userRequest.callbackUrl
+    if url:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=url, json=payload, ssl=False) as resp:
+                await resp.json()
